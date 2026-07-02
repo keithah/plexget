@@ -1,0 +1,24 @@
+[project]
+name = "plexget"
+version = "0.1.0"
+description = "SFTP-style terminal browser and downloader for Plex media."
+requires-python = ">=3.11"
+dependencies = [
+    "textual>=0.60",
+    "PlexAPI>=4.15",
+    "requests>=2.31",
+    "platformdirs>=4.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+plexget = "plexget.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["plexget*"]
