@@ -9,6 +9,8 @@ with your Plex account, pick a server, arrow-key your way through your libraries
 and pull down a single episode/movie — or a whole season/show — with a live
 progress bar.
 
+![plexget demo](docs/demo.gif)
+
 ```
 ┌─ plexget ─────────────────────────┐
 │ Severance                         │
@@ -73,6 +75,7 @@ plexget --out ~/Media   # choose the download directory
 plexget --server Home   # skip the server picker (name match, case-insensitive)
 plexget --segments 4    # faster single-file downloads (parallel byte ranges)
 plexget --pin           # force re-login (ignore the cached token)
+plexget --demo          # try the TUI with a fake in-memory library
 ```
 
 ### Keys
@@ -101,6 +104,15 @@ never freezes.
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/python -m pytest      # full test suite (network fully mocked)
+```
+
+The README demo GIF is generated from the fake `--demo` library, so it never
+exposes a real Plex server or media list:
+
+```bash
+.venv/bin/pip install pillow
+brew install librsvg
+.venv/bin/python docs/gen_demo.py
 ```
 
 Releases and the binary-build pipeline are documented in

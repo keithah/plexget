@@ -1,6 +1,8 @@
 import threading
 
-from plexget.app import NavState, Level
+import pytest
+
+from plexget.app import NavState, Level, PlexGetApp
 from plexget.downloader import DownloadResult, Progress
 from tests.fakes import FakeNode, part
 
@@ -105,10 +107,8 @@ def test_breadcrumb_reflects_depth():
     nav.push(make_tree()[0].children())  # into Severance
     assert "Severance" in nav.breadcrumb()
 
-
-import pytest
-
-from plexget.app import PlexGetApp
+def test_app_title_is_cli_name():
+    assert PlexGetApp.TITLE == "plexget"
 
 
 @pytest.mark.asyncio
@@ -181,6 +181,7 @@ async def test_pilot_leaf_download_renders_progress():
     assert "2.0 MB/s" in text      # speed_bps / 1e6
     assert "ETA 25s" in text       # (total-done)/speed_bps
     assert "50%" in text           # done/total
+    assert "(47.7 MB/95.4 MB)" in text
 
 
 @pytest.mark.asyncio
@@ -196,6 +197,18 @@ async def test_pilot_right_arrow_confirms_and_downloads_folder():
     assert len(queued) == 1
     # enumerate_parts walked Severance -> Season 1 -> both episodes
     assert [p.filename for p in queued[0]] == ["S01E01.mkv", "S01E02.mkv"]
+
+
+@pytest.mark.asyncio
+async def test_pilot_confirm_hint_renders_shortcut_keys():
+    tree = make_tree()
+    app = PlexGetApp(tree, download_runner=make_runner([]))
+    async with app.run_test() as pilot:
+        await pilot.press("right")
+        await _settle(app, pilot)
+        from textual.widgets import Label
+        labels = [str(label.render()) for label in app.screen.query(Label)]
+        assert "[y] download   [n] cancel" in labels
 
 
 @pytest.mark.asyncio

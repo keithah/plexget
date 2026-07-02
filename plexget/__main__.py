@@ -22,6 +22,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--token", default=None)
     parser.add_argument("--segments", type=int, default=1)
     parser.add_argument("--pin", action="store_true")
+    parser.add_argument("--demo", action="store_true",
+                        help="Browse a fake in-memory library (no Plex server needed).")
     return parser.parse_args(argv)
 
 
@@ -62,6 +64,12 @@ def _prompt_server(servers: list[ServerInfo]) -> ServerInfo:
 
 def main(argv=None) -> int:
     ns = parse_args(argv)
+
+    if ns.demo:
+        from plexget.app import PlexGetApp
+        from plexget.demo import demo_nodes, demo_runner
+        PlexGetApp(demo_nodes(), download_runner=demo_runner).run()
+        return 0
 
     def _account_factory(token, cid):
         # Feed the cached client id into plexapi's global identifier so the

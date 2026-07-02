@@ -79,6 +79,17 @@ def _summarize(parts: list[PartRef]) -> str:
     return f"Download {len(parts)} file(s), {gb:.2f} GB?"
 
 
+def _format_bytes(value: int) -> str:
+    size = float(value)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024 or unit == "TB":
+            if unit == "B":
+                return f"{int(size)} B"
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
 class ConfirmScreen(ModalScreen):
     """Yes/no confirmation for a whole-folder download."""
 
@@ -94,7 +105,7 @@ class ConfirmScreen(ModalScreen):
         self._message = message
 
     def compose(self) -> ComposeResult:
-        yield Vertical(Label(self._message), Label("[y] download   [n] cancel"))
+        yield Vertical(Label(self._message), Label("[y] download   [n] cancel", markup=False))
 
     def action_confirm(self) -> None:
         self.dismiss(True)
@@ -108,6 +119,7 @@ DownloadRunner = Callable[..., DownloadResult]
 
 
 class PlexGetApp(App):
+    TITLE = "plexget"
     CSS = "ListView { height: 1fr; } #status, #progress { height: auto; }"
     BINDINGS = [
         Binding("left", "back", "Back"),
@@ -286,7 +298,7 @@ class PlexGetApp(App):
         mbps = p.speed_bps / 1e6
         eta = (p.total - p.done) / p.speed_bps if p.speed_bps else 0.0
         self.query_one("#progress", Static).update(
-            f"{p.filename}  {pct:.0f}% ({p.done}/{p.total})  "
+            f"{p.filename}  {pct:.0f}% ({_format_bytes(p.done)}/{_format_bytes(p.total)})  "
             f"{mbps:.1f} MB/s  ETA {eta:.0f}s  [{p.index}/{p.count}]"
         )
 
