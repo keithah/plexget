@@ -1,0 +1,66 @@
+name: Release
+
+# Builds a standalone binary for each platform and attaches it to the GitHub
+# Release whenever a release is published (e.g. via `gh release create vX.Y.Z`).
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.asset }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: plexget-linux-x86_64
+          - os: macos-latest
+            asset: plexget-macos-arm64
+          - os: macos-13
+            asset: plexget-macos-x86_64
+          - os: windows-latest
+            asset: plexget-windows-x86_64.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install (with build extras)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[build]"
+      - name: Build binary
+        shell: bash
+        run: |
+          pyinstaller --onefile --name plexget \
+            --paths . \
+            --collect-all textual \
+            --collect-all plexapi \
+            --collect-all certifi \
+            --collect-submodules plexget \
+            packaging/entry.py
+      - name: Stage artifact
+        shell: bash
+        run: |
+          mkdir -p out
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp dist/plexget.exe "out/${{ matrix.asset }}"
+          else
+            cp dist/plexget "out/${{ matrix.asset }}"
+            chmod +x "out/${{ matrix.asset }}"
+          fi
+      - name: Smoke-check the binary
+        if: runner.os != 'Windows'
+        shell: bash
+        run: "out/${{ matrix.asset }} --help"
+      - name: Upload to release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "out/${{ matrix.asset }}" --clobber

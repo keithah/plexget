@@ -2,7 +2,22 @@
 name = "plexget"
 version = "0.1.0"
 description = "SFTP-style terminal browser and downloader for Plex media."
+readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "keithah" }]
+keywords = ["plex", "download", "tui", "textual", "media"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia",
+    "Topic :: Utilities",
+]
 dependencies = [
     "textual>=0.60",
     "PlexAPI>=4.15",
@@ -10,8 +25,14 @@ dependencies = [
     "platformdirs>=4.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/keithah/plexget"
+Repository = "https://github.com/keithah/plexget"
+Issues = "https://github.com/keithah/plexget/issues"
+
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+build = ["pyinstaller>=6.0"]
 
 [project.scripts]
 plexget = "plexget.__main__:main"
