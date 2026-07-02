@@ -120,6 +120,12 @@ class PlexGetApp(App):
         super().__init__()
         self.nav = NavState([Level(list(nodes), "", 0)])
         self._download_runner = download_runner
+        # Guard 1: at most one download in flight (a cancelled worker's blocking
+        # session.get()/segment pool keeps running, so we must not start a second).
+        self._downloading: bool = False
+        # Guard 2: generation token so a superseded nav worker's UI callback
+        # (fired after the user navigated away) is dropped.
+        self._nav_gen: int = 0
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -196,6 +202,8 @@ class PlexGetApp(App):
 
     def action_back(self) -> None:
         if self.nav.pop():
+            # Drop any in-flight descend for the level we just left.
+            self._nav_gen += 1
             with self.prevent(Input.Changed):
                 self.query_one("#filter", Input).value = self.nav.top().filter_text
             self._refresh()
@@ -205,7 +213,8 @@ class PlexGetApp(App):
         if node is None:
             return
         # children()/parts() may hit the network; run off the UI thread.
-        self._open_node(node)
+        self._nav_gen += 1
+        self._open_node(node, self._nav_gen)
 
     def action_action(self) -> None:
         node = self.nav.selected()
@@ -213,23 +222,24 @@ class PlexGetApp(App):
             return
         # enumerate_parts() can walk an entire show/library over the network;
         # compute it off the UI thread, then push the confirm modal.
-        self._prepare_folder(node)
+        self._nav_gen += 1
+        self._prepare_folder(node, self._nav_gen)
 
     # --- thread workers -------------------------------------------------
 
     @work(thread=True, exclusive=True, group="nav")
-    def _open_node(self, node) -> None:
+    def _open_node(self, node, gen: int) -> None:
         if node.is_leaf:
             parts = node.parts()
             self.call_from_thread(self._begin_download, parts)
         else:
             children = node.children()
-            self.call_from_thread(self._descend, children, node.label)
+            self.call_from_thread(self._descend, children, node.label, gen)
 
     @work(thread=True, exclusive=True, group="nav")
-    def _prepare_folder(self, node) -> None:
+    def _prepare_folder(self, node, gen: int) -> None:
         parts = node.enumerate_parts()
-        self.call_from_thread(self._confirm_folder, parts)
+        self.call_from_thread(self._confirm_folder, parts, gen)
 
     @work(thread=True, exclusive=True, group="download")
     def _download(self, parts: list[PartRef]) -> None:
@@ -241,13 +251,17 @@ class PlexGetApp(App):
 
     # --- UI-thread callbacks --------------------------------------------
 
-    def _descend(self, children: list, label: str) -> None:
+    def _descend(self, children: list, label: str, gen: int) -> None:
+        if gen != self._nav_gen:  # user navigated away before this resolved
+            return
         self.nav.push(children, label=label)
         with self.prevent(Input.Changed):
             self.query_one("#filter", Input).value = ""
         self._refresh()
 
-    def _confirm_folder(self, parts: list[PartRef]) -> None:
+    def _confirm_folder(self, parts: list[PartRef], gen: int) -> None:
+        if gen != self._nav_gen:  # stale enumerate result for a node we left
+            return
         if not parts:
             return
 
@@ -258,6 +272,12 @@ class PlexGetApp(App):
         self.push_screen(ConfirmScreen(_summarize(parts)), on_result)
 
     def _begin_download(self, parts: list[PartRef]) -> None:
+        if self._downloading:
+            self.query_one("#status", Static).update(
+                "A download is already in progress — wait for it to finish."
+            )
+            return
+        self._downloading = True
         self.query_one("#status", Static).update(f"Queued {len(parts)} file(s)")
         self._download(parts)
 
@@ -271,6 +291,7 @@ class PlexGetApp(App):
         )
 
     def _download_done(self, result: DownloadResult) -> None:
+        self._downloading = False
         succeeded = len(result.succeeded)
         msg = f"Done: {succeeded} succeeded"
         if result.failed:

@@ -1,6 +1,35 @@
+import threading
+
 from plexget.app import NavState, Level
 from plexget.downloader import DownloadResult, Progress
 from tests.fakes import FakeNode, part
+
+
+class BlockingFolder:
+    """Folder node whose children() blocks until released (Guard 2 tests)."""
+
+    kind = "show"
+    is_leaf = False
+
+    def __init__(self, label, entered, release, children):
+        self.label = label
+        self._entered = entered
+        self._release = release
+        self._children = list(children)
+
+    def children(self):
+        self._entered.set()
+        self._release.wait(timeout=5)
+        return list(self._children)
+
+    def parts(self):
+        return []
+
+    def enumerate_parts(self):
+        out = []
+        for child in self._children:
+            out.extend(child.enumerate_parts())
+        return out
 
 
 def make_tree():
@@ -25,6 +54,20 @@ async def _settle(app, pilot):
     for _ in range(6):
         await app.workers.wait_for_complete()
         await pilot.pause()
+
+
+async def _wait_until(app, pilot, predicate, tries=80):
+    """Poll the event loop (without blocking on workers) until predicate holds."""
+    for _ in range(tries):
+        if predicate():
+            return
+        await pilot.pause()
+    raise AssertionError("condition not met within pilot polling window")
+
+
+def _status_text(app):
+    from textual.widgets import Static
+    return str(app.query_one("#status", Static).render())
 
 
 def test_visible_applies_filter():
@@ -166,3 +209,57 @@ async def test_pilot_right_arrow_cancel_downloads_nothing():
         await pilot.press("n")       # cancel
         await _settle(app, pilot)
     assert queued == []
+
+
+@pytest.mark.asyncio
+async def test_pilot_second_download_rejected_while_active():
+    # Guard 1: a download already in flight blocks starting another.
+    leaf = FakeNode("Movie", "movie", True, parts=[part("File.mkv", 100)])
+    release = threading.Event()
+    calls = []
+
+    def runner(parts, on_progress=None):
+        calls.append(parts)
+        release.wait(timeout=5)  # hold the download "in progress"
+        return DownloadResult(succeeded=list(parts))
+
+    app = PlexGetApp([leaf], download_runner=runner)
+    try:
+        async with app.run_test() as pilot:
+            await pilot.press("enter")  # start first download (blocks in runner)
+            await _wait_until(app, pilot, lambda: app._downloading and len(calls) == 1)
+            await pilot.press("enter")  # attempt a second while first is active
+            await _wait_until(app, pilot, lambda: "already in progress" in _status_text(app))
+            assert len(calls) == 1  # second download was rejected
+            release.set()  # let the first finish so teardown is clean
+            await _wait_until(app, pilot, lambda: not app._downloading)
+    finally:
+        release.set()
+
+
+@pytest.mark.asyncio
+async def test_pilot_stale_descend_is_dropped():
+    # Guard 2: a superseded folder-open worker's descend callback is ignored.
+    entered = threading.Event()
+    release = threading.Event()
+    a_child = FakeNode("A-child", "episode", True, parts=[part("a.mkv", 1)])
+    folder_a = BlockingFolder("Alpha", entered, release, [a_child])
+    folder_b = FakeNode("Bravo", "show", False,
+                        children=[FakeNode("B-child", "episode", True)])
+
+    app = PlexGetApp([folder_a, folder_b], download_runner=make_runner([]))
+    try:
+        async with app.run_test() as pilot:
+            await pilot.press("enter")  # open Alpha -> worker blocks in children()
+            await _wait_until(app, pilot, lambda: entered.is_set())
+            # Supersede it by navigating to Bravo instead.
+            await pilot.press("down")
+            await pilot.pause()
+            await pilot.press("enter")  # open Bravo (fast) -> bumps _nav_gen
+            await _wait_until(app, pilot, lambda: "Bravo" in app.nav.breadcrumb())
+            release.set()               # Alpha's children() now resolves...
+            await _settle(app, pilot)   # ...but its descend must be dropped
+            assert "Bravo" in app.nav.breadcrumb()
+            assert "Alpha" not in app.nav.breadcrumb()
+    finally:
+        release.set()
