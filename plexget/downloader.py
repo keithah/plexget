@@ -155,7 +155,8 @@ def download_part_segmented(
     with open(tmp, "wb") as fh:
         fh.truncate(part.size)
 
-    bounds = _segment_bounds(part.size, segments)
+    effective = min(segments, part.size)
+    bounds = _segment_bounds(part.size, effective)
     start_time = now()
     done = 0
 
@@ -170,14 +171,18 @@ def download_part_segmented(
             fh.write(data)
         return len(data)
 
-    with ThreadPoolExecutor(max_workers=segments) as pool:
-        for written in pool.map(fetch, bounds):
-            done += written
-            if on_progress:
-                elapsed = max(now() - start_time, 1e-9)
-                on_progress(
-                    Progress(part.filename, done, part.size, done / elapsed, index, count)
-                )
+    try:
+        with ThreadPoolExecutor(max_workers=effective) as pool:
+            for written in pool.map(fetch, bounds):
+                done += written
+                if on_progress:
+                    elapsed = max(now() - start_time, 1e-9)
+                    on_progress(
+                        Progress(part.filename, done, part.size, done / elapsed, index, count)
+                    )
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
     tmp.replace(dest)
     return True
