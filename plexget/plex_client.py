@@ -21,17 +21,26 @@ def absolute_part_url(base_url: str, part_key: str, token: str) -> str:
 
 def parts_for_item(item, base_url: str, token: str, rel_dir: tuple[str, ...]) -> list[PartRef]:
     refs: list[PartRef] = []
-    for media in getattr(item, "media", []) or []:
-        for part in getattr(media, "parts", []) or []:
-            filename = os.path.basename(getattr(part, "file", "") or "") or f"{getattr(item, 'title', 'download')}"
-            refs.append(
-                PartRef(
-                    url=absolute_part_url(base_url, part.key, token),
-                    filename=filename,
-                    size=int(getattr(part, "size", 0) or 0),
-                    rel_dir=rel_dir,
-                )
+    all_parts = [
+        part
+        for media in (getattr(item, "media", []) or [])
+        for part in (getattr(media, "parts", []) or [])
+    ]
+    multi = len(all_parts) > 1
+    for index, part in enumerate(all_parts, start=1):
+        raw = getattr(part, "file", "") or ""
+        filename = os.path.basename(raw)
+        if not filename:
+            title = os.path.basename(getattr(item, "title", "") or "") or "download"
+            filename = f"{title} ({index})" if multi else title
+        refs.append(
+            PartRef(
+                url=absolute_part_url(base_url, part.key, token),
+                filename=filename,
+                size=int(getattr(part, "size", 0) or 0),
+                rel_dir=rel_dir,
             )
+        )
     return refs
 
 

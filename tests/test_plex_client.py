@@ -6,7 +6,9 @@ from plexget.plex_client import (
     absolute_part_url,
     parts_for_item,
     EpisodeNode,
+    MovieNode,
     ShowNode,
+    LibraryNode,
     server_nodes,
 )
 
@@ -62,3 +64,56 @@ def test_list_servers_filters_to_server_resources():
     servers = PlexClient(account).list_servers()
     assert [s.name for s in servers] == ["HomeServer"]
     assert isinstance(servers[0], ServerInfo)
+
+
+def _fake_movie(title="Blade Runner", file="Blade.Runner.mkv", size=500, key="/parts/9/f.mkv"):
+    part = SimpleNamespace(key=key, file=f"/movies/{file}", size=size)
+    media = SimpleNamespace(parts=[part])
+    return SimpleNamespace(title=title, media=[media])
+
+
+def _fake_show_one_ep():
+    ep = _fake_episode()
+    season = SimpleNamespace(title="Season 1", index=1, episodes=lambda: [ep])
+    return SimpleNamespace(title="Severance", seasons=lambda: [season])
+
+
+def test_movie_node_is_leaf_and_yields_parts():
+    node = MovieNode(_fake_movie(), base_url="http://host:32400", token="TOK")
+    assert node.is_leaf is True
+    assert node.kind == "movie"
+    parts = node.parts()
+    assert parts[0].filename == "Blade.Runner.mkv"
+    assert parts[0].size == 500
+    assert node.enumerate_parts() == parts
+
+
+def test_library_node_dispatches_by_section_type():
+    show_section = SimpleNamespace(title="TV", type="show",
+                                   all=lambda: [_fake_show_one_ep()])
+    movie_section = SimpleNamespace(title="Films", type="movie",
+                                    all=lambda: [_fake_movie()])
+    show_lib = LibraryNode(show_section, base_url="http://h:32400", token="TOK")
+    movie_lib = LibraryNode(movie_section, base_url="http://h:32400", token="TOK")
+    assert [c.kind for c in show_lib.children()] == ["show"]
+    assert [c.kind for c in movie_lib.children()] == ["movie"]
+
+
+def test_server_nodes_filters_to_show_and_movie_only():
+    sections = [
+        SimpleNamespace(title="TV", type="show", all=lambda: []),
+        SimpleNamespace(title="Films", type="movie", all=lambda: []),
+        SimpleNamespace(title="Music", type="artist", all=lambda: []),
+        SimpleNamespace(title="Photos", type="photo", all=lambda: []),
+    ]
+    server = SimpleNamespace(library=SimpleNamespace(sections=lambda: sections))
+    nodes = server_nodes(server, "http://h:32400", "TOK")
+    assert [n.label for n in nodes] == ["TV", "Films"]
+
+
+def test_parts_for_item_disambiguates_fileless_parts():
+    p1 = SimpleNamespace(key="/parts/1/a", file="", size=10)
+    p2 = SimpleNamespace(key="/parts/2/b", file="", size=20)
+    item = SimpleNamespace(title="Untitled", media=[SimpleNamespace(parts=[p1, p2])])
+    parts = parts_for_item(item, "http://h:32400", "TOK", rel_dir=())
+    assert [p.filename for p in parts] == ["Untitled (1)", "Untitled (2)"]
