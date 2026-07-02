@@ -198,4 +198,5 @@ class PlexClient:
     @staticmethod
     def connect(server_info: ServerInfo):
         server = server_info.resource.connect()
+        # _baseurl/_token are plexapi internals read deliberately to build part URLs.
         return server, server._baseurl, server._token

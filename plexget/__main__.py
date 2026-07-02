@@ -5,11 +5,12 @@ import sys
 from pathlib import Path
 from typing import Callable, Optional
 
+import plexapi
 import requests
 from plexapi.myplex import MyPlexAccount, MyPlexPinLogin
 
 from plexget import auth
-from plexget.downloader import DownloadResult, run_jobs
+from plexget.downloader import DownloadResult, Progress, run_jobs
 from plexget.nodes import PartRef
 from plexget.plex_client import PlexClient, ServerInfo, server_nodes
 
@@ -40,10 +41,13 @@ def choose_server(servers: list[ServerInfo], name: Optional[str]) -> ServerInfo:
 
 
 def make_download_runner(out: Path, mirror: bool, segments: int,
-                         session_factory: Callable[[], object]) -> Callable[[list], None]:
-    def run(parts: list[PartRef]) -> None:
+                         session_factory: Callable[[], object]
+                         ) -> Callable[..., DownloadResult]:
+    def run(parts: list[PartRef],
+            on_progress: Optional[Callable[[Progress], None]] = None) -> DownloadResult:
         session = session_factory()
-        run_jobs(parts, out, mirror=mirror, session=session, segments=segments)
+        return run_jobs(parts, out, mirror=mirror, session=session,
+                        segments=segments, on_progress=on_progress)
     return run
 
 
@@ -58,11 +62,22 @@ def _prompt_server(servers: list[ServerInfo]) -> ServerInfo:
 
 def main(argv=None) -> int:
     ns = parse_args(argv)
+
+    def _account_factory(token, cid):
+        # Feed the cached client id into plexapi's global identifier so the
+        # stable id is actually used for this account/session.
+        plexapi.X_PLEX_IDENTIFIER = cid
+        return MyPlexAccount(token=token)
+
+    def _pin_factory(cid):
+        plexapi.X_PLEX_IDENTIFIER = cid
+        return MyPlexPinLogin(oauth=False)
+
     account = auth.login(
         token=ns.token,
         force_pin=ns.pin,
-        account_factory=lambda token, cid: MyPlexAccount(token=token),
-        pin_factory=lambda cid: MyPlexPinLogin(oauth=False),
+        account_factory=_account_factory,
+        pin_factory=_pin_factory,
     )
     client = PlexClient(account)
     servers = client.list_servers()

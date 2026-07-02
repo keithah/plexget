@@ -47,9 +47,24 @@ def test_download_runner_invokes_segmented_per_part(tmp_path, monkeypatch):
     runner = m.make_download_runner(tmp_path, mirror=True, segments=4,
                                     session_factory=lambda: object())
     from plexget.nodes import PartRef
-    runner([PartRef("u", "f.mkv", 10)])
+    result = runner([PartRef("u", "f.mkv", 10)])
     assert calls
     assert calls[0][2]["mirror"] is True
+    assert isinstance(result, m.DownloadResult)  # runner returns the result
+
+
+def test_download_runner_forwards_on_progress(tmp_path, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        m, "run_jobs",
+        lambda parts, out, **kw: captured.update(kw) or m.DownloadResult(),
+    )
+    runner = m.make_download_runner(tmp_path, mirror=True, segments=2,
+                                    session_factory=lambda: object())
+    from plexget.nodes import PartRef
+    cb = lambda p: None
+    runner([PartRef("u", "f.mkv", 10)], on_progress=cb)
+    assert captured["on_progress"] is cb
 
 
 def test_choose_server_no_servers_raises():

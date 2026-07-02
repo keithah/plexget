@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
 import uuid
 from pathlib import Path
 from typing import Callable, Optional
@@ -61,7 +60,6 @@ def login(
     account_factory: Callable[[str, str], object],
     pin_factory: Callable[[str], object],
     print_fn: Callable[[str], None] = print,
-    sleep: Callable[[float], None] = time.sleep,
     config_dir: Optional[Path] = None,
 ):
     directory = config_dir if config_dir is not None else globals()["config_dir"]()

@@ -166,6 +166,13 @@ def download_part_segmented(
         headers = {"Range": f"bytes={start}-{end}"}
         with session.get(part.url, stream=True, timeout=30, headers=headers) as resp:
             resp.raise_for_status()
+            # A server that ignores Range replies 200 with the whole body;
+            # writing that at a segment offset would corrupt the file.
+            if resp.status_code != 206:
+                raise RuntimeError(
+                    f"Range request for {part.filename!r} not honored "
+                    f"(status {resp.status_code}, expected 206)"
+                )
             data = b"".join(resp.iter_content(chunk_size=1 << 20))
         with open(tmp, "r+b") as fh:
             fh.seek(start)
