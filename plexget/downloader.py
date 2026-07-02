@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -115,3 +116,68 @@ def run_jobs(
                 result.failed.append((part, str(exc)))
                 break
     return result
+
+
+def _segment_bounds(total: int, segments: int) -> list[tuple[int, int]]:
+    size = total // segments
+    bounds = []
+    start = 0
+    for i in range(segments):
+        end = total - 1 if i == segments - 1 else start + size - 1
+        bounds.append((start, end))
+        start = end + 1
+    return bounds
+
+
+def download_part_segmented(
+    part: PartRef,
+    dest: Path,
+    *,
+    session,
+    segments: int,
+    on_progress: Optional[Callable[[Progress], None]] = None,
+    now: Callable[[], float] = time.monotonic,
+    index: int = 1,
+    count: int = 1,
+) -> bool:
+    if segments <= 1 or not part.size:
+        return download_part(
+            part, dest, session=session, on_progress=on_progress,
+            now=now, index=index, count=count,
+        )
+
+    if dest.exists() and dest.stat().st_size == part.size:
+        return False
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".part")
+    # Preallocate the file so segments can seek to their offsets.
+    with open(tmp, "wb") as fh:
+        fh.truncate(part.size)
+
+    bounds = _segment_bounds(part.size, segments)
+    start_time = now()
+    done = 0
+
+    def fetch(bound):
+        start, end = bound
+        headers = {"Range": f"bytes={start}-{end}"}
+        with session.get(part.url, stream=True, timeout=30, headers=headers) as resp:
+            resp.raise_for_status()
+            data = b"".join(resp.iter_content(chunk_size=1 << 20))
+        with open(tmp, "r+b") as fh:
+            fh.seek(start)
+            fh.write(data)
+        return len(data)
+
+    with ThreadPoolExecutor(max_workers=segments) as pool:
+        for written in pool.map(fetch, bounds):
+            done += written
+            if on_progress:
+                elapsed = max(now() - start_time, 1e-9)
+                on_progress(
+                    Progress(part.filename, done, part.size, done / elapsed, index, count)
+                )
+
+    tmp.replace(dest)
+    return True
