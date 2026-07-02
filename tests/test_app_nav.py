@@ -45,3 +45,25 @@ def test_breadcrumb_reflects_depth():
     assert nav.breadcrumb() == "/"
     nav.push(make_tree()[0].children())  # into Severance
     assert "Severance" in nav.breadcrumb()
+
+
+import pytest
+
+from plexget.app import PlexGetApp
+
+
+@pytest.mark.asyncio
+async def test_pilot_enter_descends_and_leaf_downloads():
+    tree = make_tree()
+    queued = []
+    app = PlexGetApp(tree, download_runner=queued.append)
+    async with app.run_test() as pilot:
+        # descend into Severance
+        await pilot.press("enter")
+        assert "Severance" in app.nav.breadcrumb()
+        # descend into Season 1
+        await pilot.press("enter")
+        # select episode -> download
+        await pilot.press("enter")
+        assert len(queued) == 1
+        assert queued[0][0].filename == "S01E01.mkv"

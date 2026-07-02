@@ -68,3 +68,83 @@ class NavState:
         if len(self.levels) == 1:
             return "/"
         return "/ " + " / ".join(lvl.label for lvl in self.levels[1:])
+
+
+def _summarize(parts: list[PartRef]) -> str:
+    total = sum(p.size for p in parts)
+    gb = total / (1024 ** 3)
+    return f"Download {len(parts)} file(s), {gb:.2f} GB?"
+
+
+class PlexGetApp(App):
+    CSS = "ListView { height: 1fr; } #status { height: auto; }"
+    BINDINGS = [
+        Binding("left", "back", "Back"),
+        Binding("right", "action", "Download folder"),
+        Binding("enter", "select", "Open/Download"),
+        Binding("q", "quit", "Quit"),
+    ]
+
+    def __init__(self, nodes, download_runner: Callable[[list], None]):
+        super().__init__()
+        self.nav = NavState([Level(list(nodes), "", 0)])
+        self._download_runner = download_runner
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Static(self.nav.breadcrumb(), id="crumb")
+        yield ListView(id="list")
+        yield Input(placeholder="type to filter", id="filter")
+        yield Static("", id="status")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._refresh()
+        self.query_one("#list", ListView).focus()
+
+    def _refresh(self) -> None:
+        lv = self.query_one("#list", ListView)
+        lv.clear()
+        for node in self.nav.visible():
+            marker = "/" if not node.is_leaf else ""
+            lv.append(ListItem(Label(f"{node.label}{marker}")))
+        lv.index = self.nav.top().selected_index
+        self.query_one("#crumb", Static).update(self.nav.breadcrumb())
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        self.nav.set_filter(event.value)
+        self._refresh()
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        # ListView consumes its own "enter" binding (select_cursor) before it
+        # reaches the App-level binding, so drive selection off this message
+        # instead when focus is on the list.
+        self.action_select()
+
+    def action_back(self) -> None:
+        if self.nav.pop():
+            self.query_one("#filter", Input).value = self.nav.top().filter_text
+            self._refresh()
+
+    def action_select(self) -> None:
+        node = self.nav.selected()
+        if node is None:
+            return
+        if node.is_leaf:
+            self._start(node.parts())
+        else:
+            self.nav.push(node.children(), label=node.label)
+            self.query_one("#filter", Input).value = ""
+            self._refresh()
+
+    def action_action(self) -> None:
+        node = self.nav.selected()
+        if node is None:
+            return
+        parts = node.enumerate_parts()
+        self.query_one("#status", Static).update(_summarize(parts))
+        self._pending = parts  # confirmed via 'y' in real UI; auto in tests
+
+    def _start(self, parts: list[PartRef]) -> None:
+        self.query_one("#status", Static).update(f"Queued {len(parts)} file(s)")
+        self._download_runner(parts)
