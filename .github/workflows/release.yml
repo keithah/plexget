@@ -20,12 +20,19 @@ jobs:
         include:
           - os: ubuntu-latest
             asset: plexget-linux-x86_64
+            arch_flag: ""
           - os: macos-latest
             asset: plexget-macos-arm64
-          - os: macos-13
+            arch_flag: ""
+          # Intel macOS is cross-built on the arm64 runner (universal2 Python
+          # from setup-python) — the dedicated macos-13 Intel runners queue
+          # unreliably on the free tier.
+          - os: macos-latest
             asset: plexget-macos-x86_64
+            arch_flag: "--target-arch x86_64"
           - os: windows-latest
             asset: plexget-windows-x86_64.exe
+            arch_flag: ""
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -38,7 +45,7 @@ jobs:
       - name: Build binary
         shell: bash
         run: |
-          pyinstaller --onefile --name plexget \
+          pyinstaller --onefile --name plexget ${{ matrix.arch_flag }} \
             --paths . \
             --collect-all textual \
             --collect-all plexapi \
@@ -56,7 +63,7 @@ jobs:
             chmod +x "out/${{ matrix.asset }}"
           fi
       - name: Smoke-check the binary
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && matrix.arch_flag == ''
         shell: bash
         run: "out/${{ matrix.asset }} --help"
       - name: Upload to release
