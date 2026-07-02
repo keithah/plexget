@@ -29,3 +29,16 @@ def test_build_dest_mirrored():
 def test_build_dest_mirrored_sanitizes_dirs():
     p = PartRef("u", "f.mkv", 10, rel_dir=("Se/ve:re", ""))
     assert build_dest(Path("/out"), p, mirror=True) == Path("/out/Se_ve_re/f.mkv")
+
+
+def test_sanitize_rejects_dot_segments():
+    assert sanitize_filename("..") == "download"
+    assert sanitize_filename(".") == "download"
+
+
+def test_build_dest_neutralizes_traversal():
+    p = PartRef("u", "..", 10, rel_dir=("..", "ok"))
+    dest = build_dest(Path("/out"), p, mirror=True)
+    # every ".."/"." collapses to "download"; nothing escapes /out
+    assert dest == Path("/out/download/ok/download")
+    assert Path("/out") in dest.parents

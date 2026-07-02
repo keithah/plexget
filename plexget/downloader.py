@@ -10,7 +10,9 @@ _ILLEGAL = re.compile(r'[/\\:*?"<>|]')
 
 def sanitize_filename(name: str) -> str:
     cleaned = _ILLEGAL.sub("_", name).strip()
-    return cleaned or "download"
+    if cleaned in ("", ".", ".."):
+        return "download"
+    return cleaned
 
 
 def build_dest(out: Path, part: PartRef, mirror: bool) -> Path:
