@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 from plexget.downloader import (
@@ -112,3 +110,34 @@ def test_run_jobs_records_failure_after_retries(tmp_path):
     assert result.succeeded == []
     assert len(result.failed) == 1
     assert result.failed[0][0].filename == "a.mkv"
+
+
+class MidStreamResponse:
+    status_code = 200
+    headers = {"content-length": "8"}
+
+    def raise_for_status(self):
+        pass
+
+    def iter_content(self, chunk_size):
+        yield b"aaaa"
+        raise ConnectionError("mid-stream")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+class MidStreamFailSession:
+    def get(self, url, stream, timeout):
+        return MidStreamResponse()
+
+
+def test_interrupted_download_removes_part(tmp_path):
+    dest = tmp_path / "f.mkv"
+    with pytest.raises(ConnectionError):
+        download_part(part("f.mkv", 8), dest, session=MidStreamFailSession())
+    assert not dest.with_name("f.mkv.part").exists()
+    assert not dest.exists()

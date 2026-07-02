@@ -62,20 +62,24 @@ def download_part(
     start = now()
     done = 0
 
-    with session.get(part.url, stream=True, timeout=30) as resp:
-        resp.raise_for_status()
-        total = part.size or int(resp.headers.get("content-length", 0))
-        with open(tmp, "wb") as fh:
-            for chunk in resp.iter_content(chunk_size=chunk_size):
-                if not chunk:
-                    continue
-                fh.write(chunk)
-                done += len(chunk)
-                elapsed = max(now() - start, 1e-9)
-                if on_progress:
-                    on_progress(
-                        Progress(part.filename, done, total, done / elapsed, index, count)
-                    )
+    try:
+        with session.get(part.url, stream=True, timeout=30) as resp:
+            resp.raise_for_status()
+            total = part.size or int(resp.headers.get("content-length", 0))
+            with open(tmp, "wb") as fh:
+                for chunk in resp.iter_content(chunk_size=chunk_size):
+                    if not chunk:
+                        continue
+                    fh.write(chunk)
+                    done += len(chunk)
+                    elapsed = max(now() - start, 1e-9)
+                    if on_progress:
+                        on_progress(
+                            Progress(part.filename, done, total, done / elapsed, index, count)
+                        )
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
     tmp.replace(dest)
     return True
