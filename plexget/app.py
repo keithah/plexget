@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Optional
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
+from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input, ListItem, ListView, Label, Static
 
 from plexget.filtering import filter_items
@@ -76,6 +77,30 @@ def _summarize(parts: list[PartRef]) -> str:
     return f"Download {len(parts)} file(s), {gb:.2f} GB?"
 
 
+class ConfirmScreen(ModalScreen):
+    """Yes/no confirmation for a whole-folder download."""
+
+    BINDINGS = [
+        Binding("y", "confirm", "Yes"),
+        Binding("enter", "confirm", "Yes"),
+        Binding("n", "cancel", "No"),
+        Binding("escape", "cancel", "No"),
+    ]
+
+    def __init__(self, message: str):
+        super().__init__()
+        self._message = message
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(Label(self._message), Label("[y] download   [n] cancel"))
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+
 class PlexGetApp(App):
     CSS = "ListView { height: 1fr; } #status { height: auto; }"
     BINDINGS = [
@@ -142,8 +167,14 @@ class PlexGetApp(App):
         if node is None:
             return
         parts = node.enumerate_parts()
-        self.query_one("#status", Static).update(_summarize(parts))
-        self._pending = parts  # confirmed via 'y' in real UI; auto in tests
+        if not parts:
+            return
+
+        def on_result(confirmed: bool) -> None:
+            if confirmed:
+                self._start(parts)
+
+        self.push_screen(ConfirmScreen(_summarize(parts)), on_result)
 
     def _start(self, parts: list[PartRef]) -> None:
         self.query_one("#status", Static).update(f"Queued {len(parts)} file(s)")

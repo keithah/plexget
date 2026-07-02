@@ -67,3 +67,29 @@ async def test_pilot_enter_descends_and_leaf_downloads():
         await pilot.press("enter")
         assert len(queued) == 1
         assert queued[0][0].filename == "S01E01.mkv"
+
+
+@pytest.mark.asyncio
+async def test_pilot_right_arrow_confirms_and_downloads_folder():
+    tree = make_tree()
+    queued = []
+    app = PlexGetApp(tree, download_runner=queued.append)
+    async with app.run_test() as pilot:
+        await pilot.press("right")   # open confirm on the "Severance" folder
+        await pilot.press("y")       # confirm
+        await pilot.pause()
+    assert len(queued) == 1
+    # enumerate_parts walked Severance -> Season 1 -> both episodes
+    assert [p.filename for p in queued[0]] == ["S01E01.mkv", "S01E02.mkv"]
+
+
+@pytest.mark.asyncio
+async def test_pilot_right_arrow_cancel_downloads_nothing():
+    tree = make_tree()
+    queued = []
+    app = PlexGetApp(tree, download_runner=queued.append)
+    async with app.run_test() as pilot:
+        await pilot.press("right")
+        await pilot.press("n")       # cancel
+        await pilot.pause()
+    assert queued == []
