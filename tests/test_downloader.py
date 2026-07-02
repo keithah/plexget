@@ -141,3 +141,48 @@ def test_interrupted_download_removes_part(tmp_path):
         download_part(part("f.mkv", 8), dest, session=MidStreamFailSession())
     assert not dest.with_name("f.mkv.part").exists()
     assert not dest.exists()
+
+
+class _RangeResp:
+    def __init__(self, data):
+        self._data = data
+        self.status_code = 206
+        self.headers = {"content-length": str(len(data))}
+
+    def raise_for_status(self):
+        pass
+
+    def iter_content(self, chunk_size):
+        yield self._data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+class _RangeSession:
+    def __init__(self, payload):
+        self.payload = payload
+        self.ranges = []
+
+    def get(self, url, stream, timeout, headers=None):
+        if headers and "Range" in headers:
+            s, e = headers["Range"].split("=")[1].split("-")
+            s, e = int(s), int(e)
+            self.ranges.append((s, e))
+            return _RangeResp(self.payload[s : e + 1])
+        return _RangeResp(self.payload)
+
+
+def test_run_jobs_honors_segments(tmp_path):
+    payload = b"0123456789abcdef"  # 16 bytes
+    session = _RangeSession(payload)
+    result = run_jobs(
+        [part("big.mkv", len(payload))],
+        tmp_path, mirror=False, session=session, segments=4,
+    )
+    assert len(result.succeeded) == 1
+    assert (tmp_path / "big.mkv").read_bytes() == payload
+    assert len(session.ranges) == 4  # segmented path actually used

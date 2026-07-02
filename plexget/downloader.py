@@ -94,6 +94,7 @@ def run_jobs(
     session,
     on_progress: Optional[Callable[[Progress], None]] = None,
     retries: int = 1,
+    segments: int = 1,
     now: Callable[[], float] = time.monotonic,
 ) -> DownloadResult:
     result = DownloadResult()
@@ -104,9 +105,9 @@ def run_jobs(
         while True:
             attempts += 1
             try:
-                download_part(
-                    part, dest, session=session, on_progress=on_progress,
-                    now=now, index=index, count=count,
+                download_part_segmented(
+                    part, dest, session=session, segments=segments,
+                    on_progress=on_progress, now=now, index=index, count=count,
                 )
                 result.succeeded.append(part)
                 break

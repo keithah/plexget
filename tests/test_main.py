@@ -50,3 +50,27 @@ def test_download_runner_invokes_segmented_per_part(tmp_path, monkeypatch):
     runner([PartRef("u", "f.mkv", 10)])
     assert calls
     assert calls[0][2]["mirror"] is True
+
+
+def test_choose_server_no_servers_raises():
+    with pytest.raises(SystemExit):
+        m.choose_server([], None)
+
+
+def test_choose_server_unknown_name_raises():
+    servers = [ServerInfo("A", object())]
+    with pytest.raises(SystemExit):
+        m.choose_server(servers, "nope")
+
+
+def test_download_runner_forwards_segments(tmp_path, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        m, "run_jobs",
+        lambda parts, out, **kw: captured.update(kw) or m.DownloadResult(),
+    )
+    runner = m.make_download_runner(tmp_path, mirror=False, segments=7,
+                                    session_factory=lambda: object())
+    from plexget.nodes import PartRef
+    runner([PartRef("u", "f.mkv", 10)])
+    assert captured["segments"] == 7

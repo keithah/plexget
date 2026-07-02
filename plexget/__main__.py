@@ -9,7 +9,7 @@ import requests
 from plexapi.myplex import MyPlexAccount, MyPlexPinLogin
 
 from plexget import auth
-from plexget.downloader import DownloadResult, Progress, run_jobs
+from plexget.downloader import DownloadResult, run_jobs
 from plexget.nodes import PartRef
 from plexget.plex_client import PlexClient, ServerInfo, server_nodes
 
@@ -43,7 +43,7 @@ def make_download_runner(out: Path, mirror: bool, segments: int,
                          session_factory: Callable[[], object]) -> Callable[[list], None]:
     def run(parts: list[PartRef]) -> None:
         session = session_factory()
-        run_jobs(parts, out, mirror=mirror, session=session)
+        run_jobs(parts, out, mirror=mirror, session=session, segments=segments)
     return run
 
 
