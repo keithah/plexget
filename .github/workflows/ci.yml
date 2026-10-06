@@ -8,7 +8,7 @@ on:
 jobs:
   test:
     name: test (${{ matrix.os }}, py${{ matrix.python-version }})
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'macos-latest' && 'tenki-macos-26-small' || matrix.os == 'ubuntu-latest' && 'ubicloud-standard-2' || matrix.os }}
     strategy:
       fail-fast: false
       matrix:
